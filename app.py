@@ -1,142 +1,216 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import numpy as np
 import pymannkendall as mk
 import matplotlib.pyplot as plt
+import mplfinance as mpf
 
 # =============================
 # CẤU HÌNH TRANG
 # =============================
 st.set_page_config(
-    page_title="Kiểm định Mann-Kendall",
+    page_title="Phân tích cổ phiếu bằng Mann-Kendall",
     page_icon="📈",
-    layout="centered"
+    layout="wide"
 )
 
-st.title("📈 KIỂM ĐỊNH XU HƯỚNG GIÁ CỔ PHIẾU BẰNG MANN-KENDALL")
-
-st.write(
-    """
-Ứng dụng sử dụng kiểm định **Mann-Kendall** để xác định
-giá cổ phiếu có xu hướng tăng, giảm hay không có xu hướng.
-"""
-)
+st.title("📈 PHÂN TÍCH GIÁ CỔ PHIẾU VÀ KIỂM ĐỊNH MANN-KENDALL")
 
 # =============================
-# NHẬP THÔNG TIN
+# SIDEBAR
 # =============================
 
-ticker = st.text_input(
-    "Nhập mã cổ phiếu:",
-    value="VCB.VN"
+st.sidebar.header("Thông tin đầu vào")
+
+ticker = st.sidebar.text_input(
+    "Mã cổ phiếu",
+    "VCB.VN"
 )
 
-start_date = st.date_input(
+start_date = st.sidebar.date_input(
     "Ngày bắt đầu",
-    value=pd.to_datetime("2024-01-01")
+    pd.to_datetime("2026-01-01")
 )
 
-end_date = st.date_input(
+end_date = st.sidebar.date_input(
     "Ngày kết thúc",
-    value=pd.to_datetime("2026-06-27")
+    pd.to_datetime("2026-06-27")
 )
 
 # =============================
-# NÚT THỰC HIỆN
+# NÚT CHẠY
 # =============================
 
-if st.button("Thực hiện kiểm định"):
+if st.sidebar.button("Phân tích"):
 
-    try:
+    with st.spinner("Đang tải dữ liệu..."):
 
-        with st.spinner("Đang tải dữ liệu..."):
-
-            df = yf.download(
-                ticker,
-                start=start_date,
-                end=end_date,
-                progress=False
-            )
-
-        if df.empty:
-            st.error("Không tìm thấy dữ liệu.")
-            st.stop()
-
-        # Nếu cột dạng MultiIndex thì bỏ level ticker
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.droplevel("Ticker")
-
-        close_price = df["Close"]
-
-        # =============================
-        # VẼ BIỂU ĐỒ
-        # =============================
-
-        fig, ax = plt.subplots(figsize=(10,5))
-
-        ax.plot(
-            close_price,
-            color="blue",
-            linewidth=2
+        df = yf.download(
+            ticker,
+            start=start_date,
+            end=end_date,
+            progress=False
         )
 
-        ax.set_title(f"Giá cổ phiếu {ticker}")
-        ax.set_xlabel("Ngày")
-        ax.set_ylabel("Giá")
-        ax.grid(True)
+    if df.empty:
+        st.error("Không tìm thấy dữ liệu.")
+        st.stop()
 
-        st.pyplot(fig)
+    # =============================
+    # XỬ LÝ DỮ LIỆU
+    # =============================
 
-        # =============================
-        # KIỂM ĐỊNH
-        # =============================
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.droplevel("Ticker")
 
-        result = mk.original_test(close_price)
+    full_date_range = pd.date_range(
+        start=df.index.min(),
+        end=df.index.max(),
+        freq="D"
+    )
 
-        st.subheader("Kết quả kiểm định")
+    df = df.reindex(full_date_range)
 
-        st.write(f"**Trend:** {result.trend}")
-        st.write(f"**p-value:** {result.p:.6f}")
-        st.write(f"**Tau:** {result.Tau:.4f}")
-        st.write(f"**S:** {result.s}")
-        st.write(f"**Variance of S:** {result.var_s:.2f}")
-        st.write(f"**Z:** {result.z:.4f}")
+    df = df.ffill()
 
-        # =============================
-        # DIỄN GIẢI
-        # =============================
+    df["simple_ret"] = df["Close"].pct_change()
 
-        st.subheader("Diễn giải")
+    df["log_ret"] = np.log(
+        df["Close"] / df["Close"].shift(1)
+    )
 
-        if result.p < 0.05:
+    # =============================
+    # DỮ LIỆU
+    # =============================
 
-            if result.trend == "increasing":
-                st.success(
-                    "Có xu hướng tăng có ý nghĩa thống kê (p < 0.05)."
-                )
+    st.subheader("Dữ liệu")
 
-            elif result.trend == "decreasing":
-                st.success(
-"Có xu hướng giảm có ý nghĩa thống kê (p < 0.05)."
-                )
+    st.dataframe(df)
 
-            else:
-                st.success(
-                    "Có xu hướng đáng kể về mặt thống kê."
-                )
+    # =============================
+    # GIÁ ĐÓNG CỬA + LOG RETURN
+    # =============================
 
-        else:
-            st.warning(
-                "Không phát hiện xu hướng có ý nghĩa thống kê (p ≥ 0.05)."
+    st.subheader("Giá đóng cửa và Log Return")
+
+    fig, ax = plt.subplots(
+        2,
+        1,
+        figsize=(10,8),
+        sharex=True
+    )
+
+    ax[0].plot(
+        df.index,
+        df["Close"],
+        color="red",
+        linewidth=2,
+        label="Close Price"
+    )
+
+    ax[0].set_title("Giá đóng cửa")
+    ax[0].set_ylabel("VND")
+    ax[0].legend()
+    ax[0].grid(True)
+
+    ax[1].plot(
+        df.index,
+        df["log_ret"],
+        color="green",
+        linewidth=1.5,
+        label="Log Return"
+    )
+
+    ax[1].set_title("Log Return")
+    ax[1].set_ylabel("Return")
+    ax[1].set_xlabel("Date")
+    ax[1].legend()
+    ax[1].grid(True)
+
+    plt.tight_layout()
+
+    st.pyplot(fig)
+
+    # =============================
+    # BIỂU ĐỒ NẾN
+    # =============================
+
+    st.subheader("Biểu đồ nến")
+
+    fig2, axlist = mpf.plot(
+        df,
+        type="candle",
+        mav=(10,20),
+        volume=True,
+        style="yahoo",
+figsize=(12,6),
+        title=f"{ticker}",
+        returnfig=True
+    )
+
+    st.pyplot(fig2)
+
+    # =============================
+    # KIỂM ĐỊNH MANN-KENDALL
+    # =============================
+
+    close_prices = df["Close"].dropna().reset_index(drop=True)
+
+    result = mk.original_test(close_prices)
+
+    st.subheader("Kết quả kiểm định Mann-Kendall")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        st.metric(
+            "Trend",
+            result.trend
+        )
+
+        st.metric(
+            "Tau",
+            round(result.Tau,4)
+        )
+
+    with col2:
+
+        st.metric(
+            "p-value",
+            round(result.p,6)
+        )
+
+        st.metric(
+            "Variance S",
+            round(result.var_s,2)
+        )
+
+    st.markdown("---")
+
+    if result.p < 0.05:
+
+        if result.trend == "increasing":
+
+            st.success(
+                "Có xu hướng TĂNG có ý nghĩa thống kê (p < 0.05)."
             )
 
-        # =============================
-        # HIỂN THỊ DỮ LIỆU
-        # =============================
+        elif result.trend == "decreasing":
 
-        st.subheader("Dữ liệu")
+            st.success(
+                "Có xu hướng GIẢM có ý nghĩa thống kê (p < 0.05)."
+            )
 
-        st.dataframe(df)
+        else:
 
-    except Exception as e:
-        st.error(e)
+            st.success(
+                "Có xu hướng đáng kể về mặt thống kê."
+            )
+
+    else:
+
+        st.warning(
+            "Không phát hiện xu hướng có ý nghĩa thống kê."
+        )
