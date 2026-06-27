@@ -14,8 +14,8 @@ st.set_page_config(
     page_icon="📈",
     layout="wide"
 )
-
-st.title("📈 PHÂN TÍCH GIÁ CỔ PHIẾU VÀ KIỂM ĐỊNH MANN-KENDALL")
+st.image("logo.jpg")
+st.title("TRỰC QUANG HÓA GIÁ CỔ PHIẾU VÀ KIỂM ĐỊNH MANN-KENDALL_VÕ QUỲNH HƯƠNG ĐỀ TÀI 4")
 
 # =============================
 # SIDEBAR
